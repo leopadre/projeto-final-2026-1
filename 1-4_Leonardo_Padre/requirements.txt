@@ -1,0 +1,16 @@
+# Analise de Dados
+pandas
+pyspark
+numpy
+
+# Graficos
+plotly
+nbformat
+
+# IA
+scikit-learn
+xgboost
+joblib
+
+# Jupyter
+ipykernel

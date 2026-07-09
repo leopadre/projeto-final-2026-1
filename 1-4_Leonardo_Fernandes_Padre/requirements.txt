@@ -1,9 +1,0 @@
-# MANIPULAÇÃO DE DADOS
-pandas
-pyspark
-numpy
-
-# VISUALIZAÇÃO DE DADOS
-ipykernel
-matplotlib
-seaborn
