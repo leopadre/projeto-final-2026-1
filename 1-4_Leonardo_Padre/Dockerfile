@@ -12,7 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Application code
-COPY app/ ./app/
+COPY api/app/ ./app/
 
 # Model directory (populated via volume or COPY)
 RUN mkdir -p /app/model
