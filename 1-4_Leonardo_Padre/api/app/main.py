@@ -4,7 +4,9 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
+from app.llm import extract_fields, explain_result, ask_missing, FIELD_LABELS, REQUIRED_FIELDS, OPTIONAL_FIELDS
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -43,11 +45,6 @@ COLUMN_DEFAULTS = {
     "commercial_assets_value": 0,
     "luxury_assets_value": 0,
     "bank_asset_value": 0,
-    # NOTE: these four MUST have a real reference value, otherwise the
-    # perturbation in compute_shap_approximation replaces the feature with
-    # itself (baseline == perturbed_prob), silently zeroing out the impact
-    # of what are usually the most decisive features in a credit model.
-    # Replace these with the actual mean/median from your training set.
     "income_annum": 5_000_000,
     "loan_amount": 15_000_000,
     "loan_term": 10,
@@ -76,6 +73,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── Schema ─────────────────────────────────────────────────────────────────────
 class LoanRequest(BaseModel):
@@ -125,25 +128,6 @@ def build_feature_vector(req: LoanRequest) -> pd.DataFrame:
 
 
 def run_model_inference(model, X: pd.DataFrame):
-    """
-    Runs both predict() and predict_proba() and returns them consistently.
-
-    IMPORTANT — class mapping for this model:
-        class 0 -> approved
-        class 1 -> rejected
-
-    pred      -> class predicted by the model (0 = approved, 1 = rejected)
-    proba_row -> full probability array for the single row: [prob_class0, prob_class1]
-                 e.g. [[90, 10]] means 90% chance of approved (class 0) and
-                 10% chance of rejected (class 1).
-
-    We trust `pred` as the source of truth for the decision (it's what the
-    model itself would return in production). The probability we report as
-    "confidence" is always the value at the index matching `pred` in
-    proba_row — i.e. whichever of the two probabilities is higher is the one
-    correlated with the predicted class, since predict() and predict_proba()
-    are guaranteed to agree on which class "wins".
-    """
     pred = int(model.predict(X)[0])           # 0 = approved, 1 = rejected
     proba_row = model.predict_proba(X)[0]      # [prob_class0, prob_class1]
 
@@ -152,12 +136,8 @@ def run_model_inference(model, X: pd.DataFrame):
 
     approved = bool(pred == 0)
 
-    # Probability of approval is always prob_class0, regardless of which
-    # class was predicted — this is what gets reported as "probability".
     approved_prob = prob_class0
 
-    # Confidence = probability associated with whichever class was actually
-    # predicted (the higher of the two, correlated by index with `pred`).
     confidence = float(proba_row[pred])
 
     return {
@@ -171,24 +151,6 @@ def run_model_inference(model, X: pd.DataFrame):
 
 
 def compute_shap_approximation(model, X: pd.DataFrame):
-    """
-    Lightweight feature-impact approximation via marginal contribution.
-
-    For a StackingClassifier (LogisticRegression + RandomForest + XGBoost,
-    final_estimator=LogisticRegression), we compute the marginal impact of
-    each feature THREE times — once per base estimator — and average the
-    three results. This gives a per-feature impact that reflects the
-    consensus across all base models feeding into the meta-estimator,
-    rather than only the final stacked probability.
-
-    If `model` is not a StackingClassifier (or has no `estimators_`), we
-    fall back to computing the impact directly on `model.predict_proba`.
-
-    Impact is measured with respect to the "approved" class (class 0)
-    probability, so a positive impact means the feature pushed the
-    prediction toward approval.
-    """
-
     def marginal_impacts(predict_proba_fn, X_row: pd.DataFrame):
         baseline = float(predict_proba_fn(X_row)[0][0])
         result = {}
@@ -215,8 +177,6 @@ def compute_shap_approximation(model, X: pd.DataFrame):
         per_model_impacts.append(marginal_impacts(estimator.predict_proba, X))
 
     if not per_model_impacts:
-        # None of the base estimators expose predict_proba — fall back to
-        # the stacked model's own probability.
         impacts = marginal_impacts(model.predict_proba, X)
         return {k: round(v, 4) for k, v in impacts.items()}
 
@@ -296,3 +256,34 @@ def predict(req: LoanRequest):
             "prediction_time_ms": elapsed_ms,
         },
     }
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = []
+    collected: dict = {}
+
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    extracted = await extract_fields(req.message)
+
+    collected = {**req.collected}
+    for k, v in extracted.items():
+        if v is not None:
+            collected[k] = v
+
+    missing = [k for k in REQUIRED_FIELDS if not collected.get(k)]
+
+    if missing:
+        missing_labels = ", ".join(FIELD_LABELS[k] for k in missing)
+        history = [m.model_dump() for m in req.history]
+        reply = await ask_missing(req.message, collected, missing_labels, history)
+        return {"reply": reply, "collected": collected, "result": None}
+
+    payload = {k: collected[k] for k in (REQUIRED_FIELDS + OPTIONAL_FIELDS) if collected.get(k) is not None}
+    prediction = predict(LoanRequest(**payload))
+    reply = await explain_result(payload, prediction)
+    return {"reply": reply, "collected": {}, "result": prediction}

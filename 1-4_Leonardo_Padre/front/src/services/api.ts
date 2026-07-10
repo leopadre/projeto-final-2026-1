@@ -1,54 +1,67 @@
-import type { LoanAnalysis } from "@/types";
+import type { LoanAnalysis, ChatRequest, ChatResponse, ChatRole } from "@/types";
 
-/**
- * analyzeLoan
- *
- * Ponto único de comunicação com o backend de análise de crédito.
- * No futuro esta função irá:
- *  1. Enviar a mensagem do usuário para um LLM que extrai variáveis estruturadas
- *  2. Chamar a API FastAPI (model.pkl) com o JSON extraído
- *  3. Passar a resposta por um LLM que gera a explicação final
- *
- * Por enquanto retorna um mock determinístico baseado no conteúdo da mensagem.
- */
-export async function analyzeLoan(message: string): Promise<LoanAnalysis> {
-  await new Promise((resolve) => setTimeout(resolve, 1600));
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
-  const lower = message.toLowerCase();
-  const negativeSignals = [
-    "desemprega",
-    "sem renda",
-    "score baixo",
-    "negativado",
-    "spc",
-    "serasa",
-    "atrasad",
-  ];
-  const isRisky =
-    negativeSignals.some((s) => lower.includes(s)) ||
-    /\b([5-9]\d{2}\.?\d{3}|\d{7,})\b/.test(lower); // valores muito altos
+let collectedFields: Record<string, number | null> = {};
+let conversationHistory: { role: ChatRole; content: string }[] = [];
 
-  if (isRisky) {
-    return {
-      approved: false,
-      probability: 0.37,
-      risk: "HIGH",
-      reasons: [
-        "Score de crédito abaixo do ideal",
-        "Valor solicitado elevado em relação à renda",
-        "Baixo patrimônio declarado",
-      ],
-    };
+export function resetLoanSession() {
+  collectedFields = {};
+  conversationHistory = [];
+}
+
+export async function analyzeLoan(
+  message: string
+): Promise<{ reply: string; analysis: LoanAnalysis | null }> {
+  const body: ChatRequest = {
+    message,
+    history: conversationHistory,
+    collected: collectedFields,
+  };
+
+  const resp = await fetch(`${API_URL}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    throw new Error(`API error: ${resp.status}`);
   }
 
-  return {
-    approved: true,
-    probability: 0.91,
-    risk: "LOW",
-    reasons: [
-      "Boa renda mensal comprovada",
-      "Excelente score de crédito",
-      "Patrimônio compatível com o valor solicitado",
-    ],
+  const data: ChatResponse = await resp.json();
+
+  console.log("[analyzeLoan] response:", JSON.stringify(data, null, 2));
+
+  // atualiza estado de sessão
+  collectedFields = data.collected;
+  conversationHistory.push({ role: "user", content: message });
+  conversationHistory.push({ role: "assistant", content: data.reply });
+
+  if (!data.result) {
+    return { reply: data.reply, analysis: null };
+  }
+
+  const { decision, explanation } = data.result;
+
+  const risk = decision.risk.toUpperCase() as LoanAnalysis["risk"];
+
+  const positiveFactors = explanation.factors
+    .filter((f) => f.direction === "positive")
+    .sort((a, b) => b.impact - a.impact)
+    .slice(0, 3)
+    .map((f) => f.feature.replace(/_/g, " "));
+
+  const negativeFactors = explanation.factors
+    .filter((f) => f.direction === "negative")
+    .map((f) => f.feature.replace(/_/g, " "));
+
+  const analysis: LoanAnalysis = {
+    approved: decision.approved,
+    probability: decision.probability,
+    risk,
+    reasons: [...(positiveFactors ?? []), ...(negativeFactors ?? [])],
   };
+
+  return { reply: data.reply, analysis };
 }

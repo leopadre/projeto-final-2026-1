@@ -33,14 +33,12 @@ export function useChat() {
     setIsAnalyzing(true);
 
     try {
-      const analysis = await analyzeLoan(trimmed);
+      const { reply, analysis } = await analyzeLoan(trimmed);
       const assistantMsg: ChatMessage = {
         id: uid(),
         role: "assistant",
-        content: analysis.approved
-          ? "Concluí a análise. Com base nos dados informados, sua solicitação tem alta probabilidade de aprovação."
-          : "Concluí a análise. Com base nos dados informados, sua solicitação apresenta risco elevado.",
-        analysis,
+        content: reply,
+        analysis: analysis ?? undefined,
         createdAt: Date.now(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
