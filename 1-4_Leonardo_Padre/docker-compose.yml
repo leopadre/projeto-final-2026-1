@@ -2,7 +2,7 @@ services:
   loan-api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: api/Dockerfile
     container_name: loan-approval-api
     ports:
       - "8000:8000"
@@ -18,3 +18,16 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+  loan-front:
+    build:
+      context: .
+      dockerfile: front/Dockerfile
+    container_name: loan-approval-front
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      HOST: 0.0.0.0
+    depends_on:
+      - loan-api
+    restart: unless-stopped
