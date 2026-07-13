@@ -8,8 +8,6 @@ services:
       - ./api/.env
     ports:
       - "8000:8000"
-    volumes:
-      - ./agent:/app/model:ro
     environment:
       MODEL_PATH: /app/model/model.pkl
       MODEL_VERSION: "1.0.0"

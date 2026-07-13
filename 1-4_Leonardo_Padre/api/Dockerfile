@@ -16,6 +16,7 @@ COPY api/app/ ./app/
 
 # Model directory (populated via volume or COPY)
 RUN mkdir -p /app/model
+COPY agent/model.pkl /app/model/model.pkl
 
 EXPOSE 8000
 
