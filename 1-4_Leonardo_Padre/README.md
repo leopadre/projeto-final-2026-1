@@ -5,7 +5,7 @@
 
 **Integrante:** Leonardo Fernandes Padre - 200067036
 
-**Aplicação:** [URL DA APLICAÇÃO]
+**Aplicação:** [\[URL DA APLICAÇÃO\]](https://creditai-h0r8.onrender.com/)
 
 **Vídeo de Demonstração:** [URL DO VÍDEO]
 
@@ -100,7 +100,16 @@ Para subir o ambiente completo:
 docker compose up --build
 ```
 
-O arquivo `.env` no diretório `api/` define as variáveis sensíveis (chave da LLM, URL do provider, versão do modelo) e é injetado em ambos os containers via `env_file` no `docker-compose.yml`.
+O arquivo `.env` no diretório `api/` define as variáveis sensíveis (chave da LLM, URL do provider, versão do modelo) e é injetado em ambos os containers via `env_file` no `docker-compose.yml`. O exemplo de .env abaixo:
+
+```bash
+MODEL_PATH=/app/model/model.pkl
+MODEL_VERSION=1.0.0
+
+PROVIDER_URL=<url-da-api-llm>
+LLM_API_KEY=<api-key>
+LLM_MODEL=<api-modelo>
+```
 
 ---
 

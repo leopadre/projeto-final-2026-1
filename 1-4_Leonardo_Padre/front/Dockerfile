@@ -6,8 +6,9 @@ RUN bun install --frozen-lockfile
 
 COPY front/ .
 
-# Força o Nitro a gerar um build de server Node comum,
-# em vez do preset "cloudflare" que vem como default do config da Lovable
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
 ENV NITRO_PRESET=node-server
 RUN bun run build
 
@@ -18,6 +19,7 @@ COPY --from=build /app/.output ./.output
 
 ENV PORT=3000
 ENV HOST=0.0.0.0
+
 EXPOSE 3000
 
 CMD ["bun", "run", ".output/server/index.mjs"]
