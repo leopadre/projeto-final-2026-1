@@ -7,7 +7,7 @@
 
 **Aplicação:** [\[URL DA APLICAÇÃO\]](https://creditai-h0r8.onrender.com/)
 
-**Vídeo de Demonstração:** [URL DO VÍDEO]
+**Vídeo de Demonstração:** [\[URL DO VÍDEO\]](https://youtu.be/wT6Og-0V4JU)
 
 ---
 
